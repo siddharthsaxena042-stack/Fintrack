@@ -32,8 +32,7 @@ class MarketDataService:
         self._upstox_ws_connected = False
         self._upstox_rest_ok = False
         self._upstox_error: str | None = None
-        self._stream_started = False
-        self._socketio = None
+        self._hydration_started = False
         self._rng = random.Random(42)
 
         now_ist = self.now_ist()
@@ -706,13 +705,12 @@ class MarketDataService:
         t = threading.Thread(target=_ws_worker, daemon=True, name="upstox-ws-feed")
         t.start()
 
-    def start_background_stream(self, socketio) -> None:
-        """Start background market data hydration and Socket.IO tick emitter once."""
+    def start_background_hydration(self) -> bool:
+        """Start market data hydration once, returning whether it was started."""
         with self._lock:
-            if self._stream_started:
-                return
-            self._stream_started = True
-            self._socketio = socketio
+            if self._hydration_started:
+                return False
+            self._hydration_started = True
 
         # Initial asynchronous hydration so server boots immediately
         def _initial_hydrate() -> None:
@@ -720,18 +718,7 @@ class MarketDataService:
             self._start_upstox_websocket_listener()
 
         threading.Thread(target=_initial_hydrate, daemon=True, name="market-init").start()
-
-        def _broadcast_loop() -> None:
-            while True:
-                try:
-                    snapshot = self.step_ticks_and_candles()
-                    if self._socketio is not None:
-                        self._socketio.emit("market_tick", snapshot, namespace="/")
-                except Exception:
-                    pass
-                self._socketio.sleep(Config.MARKET_STREAM_INTERVAL)
-
-        socketio.start_background_task(_broadcast_loop)
+        return True
 
 
 market_service = MarketDataService()

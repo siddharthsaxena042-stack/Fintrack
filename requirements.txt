@@ -9,3 +9,4 @@ Werkzeug>=3.0.0
 pytz>=2024.1
 gunicorn
 eventlet
+gevent

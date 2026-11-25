@@ -13,6 +13,8 @@
     let inWatchlist = configEl.dataset.inWatchlist === "1";
     let lastBar = null;
     let candlesData = [];
+    let lastSocketTickAt = 0;
+    let fallbackPollInFlight = false;
 
     const chartContainer = document.getElementById("tvChartContainer");
     let chart = null;
@@ -94,6 +96,25 @@
       }
       if (chart && candlesData.length > 0) {
         chart.timeScale().fitContent();
+      }
+    }
+
+    function updateLatestCandle(bar) {
+      if (!bar) return;
+      const existingIndex = candlesData.findIndex((candle) => candle.time === bar.time);
+      if (existingIndex >= 0) {
+        candlesData[existingIndex] = bar;
+      } else if (!lastBar || bar.time > lastBar.time) {
+        candlesData.push(bar);
+      } else {
+        return;
+      }
+      lastBar = bar;
+
+      if (chartType === "candlestick" && candleSeries) {
+        candleSeries.update(bar);
+      } else if (chartType === "area" && areaSeries) {
+        areaSeries.update({ time: bar.time, value: bar.close });
       }
     }
 
@@ -397,6 +418,7 @@
     window.addEventListener("fintrack:market_tick", function (e) {
       const payload = e.detail;
       if (!payload || !payload.quotes) return;
+      if (payload.source !== "http-poll") lastSocketTickAt = Date.now();
       const q = payload.quotes[currentSymbol];
       if (q) {
         updateQuoteUI(q);
@@ -404,21 +426,43 @@
 
       const latestBySymbol = (payload.latest_candles || {})[currentSymbol];
       const bar = latestBySymbol ? latestBySymbol[currentTimeframe] : null;
-      if (bar) {
-        if (!lastBar || bar.time > lastBar.time) {
-          candlesData.push(bar);
-        } else if (bar.time === lastBar.time) {
-          candlesData[candlesData.length - 1] = bar;
-        }
-        lastBar = bar;
-
-        if (chartType === "candlestick" && candleSeries) {
-          candleSeries.update(bar);
-        } else if (chartType === "area" && areaSeries) {
-          areaSeries.update({ time: bar.time, value: bar.close });
-        }
-      }
+      updateLatestCandle(bar);
     });
+
+    async function pollMarketFallback() {
+      const socket = window.FinTrack && window.FinTrack.socket;
+      if (socket && socket.connected && lastSocketTickAt && Date.now() - lastSocketTickAt <= 3000) return;
+      if (fallbackPollInFlight) return;
+
+      const symbol = currentSymbol;
+      const timeframe = currentTimeframe;
+      fallbackPollInFlight = true;
+      try {
+        const res = await fetch(
+          `/api/market/candles/${encodeURIComponent(symbol)}?timeframe=${encodeURIComponent(timeframe)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (symbol !== currentSymbol || timeframe !== currentTimeframe) return;
+
+        if (data.quote) updateQuoteUI(data.quote);
+        const history = data.candles || [];
+        if (!candlesData.length && history.length) {
+          candlesData = history;
+          lastBar = history[history.length - 1];
+          renderActiveSeries();
+        } else if (history.length) {
+          updateLatestCandle(history[history.length - 1]);
+        }
+      } catch (err) {
+        console.warn("Market candle polling failed:", err);
+      } finally {
+        fallbackPollInFlight = false;
+      }
+    }
+
+    window.setInterval(pollMarketFallback, 2000);
 
     // Boot chart & load initial symbol
     initChart();

@@ -1,4 +1,6 @@
+import logging
 import os
+from importlib.util import find_spec
 from flask import Flask, session
 from flask_socketio import SocketIO
 
@@ -12,7 +14,23 @@ from routes.main import main_bp
 from routes.market import market_bp
 from routes.trading import trading_bp
 
-socketio = SocketIO(cors_allowed_origins="*", async_mode="threading")
+SOCKETIO_ASYNC_MODE = "gevent" if find_spec("gevent") else "threading"
+socketio = SocketIO(cors_allowed_origins="*", async_mode=SOCKETIO_ASYNC_MODE)
+logger = logging.getLogger(__name__)
+
+
+def _market_price_emitter() -> None:
+    """Broadcast market prices continuously using the active Socket.IO async model."""
+    while True:
+        try:
+            socketio.emit(
+                "market_tick",
+                market_service.step_ticks_and_candles(),
+                namespace="/",
+            )
+        except Exception:
+            logger.exception("Market price emitter failed")
+        socketio.sleep(1.5)
 
 
 def format_inr(value: float | int | None) -> str:
@@ -64,7 +82,11 @@ def create_app(test_config: dict | None = None, start_stream: bool = True) -> Fl
             "current_user_email": session.get("user_email"),
         }
 
-    socketio.init_app(app)
+    socketio.init_app(
+        app,
+        cors_allowed_origins="*",
+        async_mode=SOCKETIO_ASYNC_MODE,
+    )
 
     @socketio.on("connect")
     def handle_ws_connect():
@@ -77,8 +99,8 @@ def create_app(test_config: dict | None = None, start_stream: bool = True) -> Fl
             },
         )
 
-    if start_stream:
-        market_service.start_background_stream(socketio)
+    if start_stream and market_service.start_background_hydration():
+        socketio.start_background_task(_market_price_emitter)
 
     return app
 

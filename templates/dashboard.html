@@ -166,6 +166,9 @@
   // Keep dashboard Portfolio Value & Unrealized P&L live on WebSocket ticks
   (function () {
     const holdings = {{ portfolio.holdings|tojson }};
+    window.FinTrack.pollSymbols = Array.from(
+      new Set([...(window.FinTrack.pollSymbols || []), ...(holdings || []).map((holding) => holding.symbol)])
+    );
     const cash = {{ portfolio.virtual_balance }};
     const realized = {{ portfolio.total_realized_pnl }};
     if (!holdings || holdings.length === 0) return;

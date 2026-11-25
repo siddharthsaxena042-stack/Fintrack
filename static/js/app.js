@@ -204,61 +204,101 @@
       btn.addEventListener("click", () => sendAiPrompt(btn.dataset.aiChip));
     });
 
-    // 5. Global Socket.IO Real-time Market Stream
-    if (typeof io !== "undefined" && document.getElementById("globalMarketStatusPill")) {
-      const socket = io();
-      window.FinTrack.socket = socket;
+    // 5. Global Socket.IO stream with HTTP quote polling as a fallback.
+    let socket = null;
+    let lastSocketTickAt = 0;
+    let quotePollInFlight = false;
+    const lastPrices = {};
 
-      const lastPrices = {};
+    function renderMarketTick(payload, fromSocket) {
+      if (!payload) return;
+      if (fromSocket) lastSocketTickAt = Date.now();
+      if (payload.status) updateStatusPill(payload.status);
 
-      socket.on("market_tick", function (payload) {
-        if (!payload) return;
-        const status = payload.status;
-        if (status) {
-          updateStatusPill(status);
-        }
+      const quotes = payload.quotes || {};
+      Object.keys(quotes).forEach((sym) => {
+        const q = quotes[sym];
+        const prev = lastPrices[sym];
+        const dir = prev !== undefined ? (q.ltp > prev ? "tick-up" : q.ltp < prev ? "tick-down" : "") : "";
+        lastPrices[sym] = q.ltp;
 
-        const quotes = payload.quotes || {};
-        Object.keys(quotes).forEach((sym) => {
-          const q = quotes[sym];
-          const prev = lastPrices[sym];
-          const dir = prev !== undefined ? (q.ltp > prev ? "tick-up" : q.ltp < prev ? "tick-down" : "") : "";
-          lastPrices[sym] = q.ltp;
+        document.querySelectorAll(`[data-live-symbol="${CSS.escape(sym)}"]`).forEach((row) => {
+          const ltpEl = row.querySelector('[data-field="ltp"]');
+          const chgEl = row.querySelector('[data-field="change_pct"]');
+          const absChgEl = row.querySelector('[data-field="change"]');
+          const isPos = Number(q.change_pct) >= 0;
 
-          document.querySelectorAll(`[data-live-symbol="${CSS.escape(sym)}"]`).forEach((row) => {
-            const ltpEl = row.querySelector('[data-field="ltp"]');
-            const chgEl = row.querySelector('[data-field="change_pct"]');
-            const absChgEl = row.querySelector('[data-field="change"]');
-            const isPos = Number(q.change_pct) >= 0;
-
-            if (ltpEl) {
-              ltpEl.textContent = formatINR(q.ltp);
-              if (dir) {
-                ltpEl.classList.remove("tick-up", "tick-down");
-                void ltpEl.offsetWidth;
-                ltpEl.classList.add(dir);
-              }
+          if (ltpEl) {
+            ltpEl.textContent = formatINR(q.ltp);
+            if (dir) {
+              ltpEl.classList.remove("tick-up", "tick-down");
+              void ltpEl.offsetWidth;
+              ltpEl.classList.add(dir);
             }
-            if (chgEl) {
-              chgEl.textContent = `${isPos ? "+" : ""}${Number(q.change_pct).toFixed(2)}%`;
-              chgEl.classList.toggle("text-green", isPos);
-              chgEl.classList.toggle("text-red", !isPos);
-              if (chgEl.classList.contains("badge")) {
-                chgEl.classList.toggle("badge-green", isPos);
-                chgEl.classList.toggle("badge-red", !isPos);
-              }
+          }
+          if (chgEl) {
+            chgEl.textContent = `${isPos ? "+" : ""}${Number(q.change_pct).toFixed(2)}%`;
+            chgEl.classList.toggle("text-green", isPos);
+            chgEl.classList.toggle("text-red", !isPos);
+            if (chgEl.classList.contains("badge")) {
+              chgEl.classList.toggle("badge-green", isPos);
+              chgEl.classList.toggle("badge-red", !isPos);
             }
-            if (absChgEl) {
-              absChgEl.textContent = `${isPos ? "+" : ""}${formatINR(q.change)}`;
-              absChgEl.classList.toggle("text-green", isPos);
-              absChgEl.classList.toggle("text-red", !isPos);
-            }
-          });
+          }
+          if (absChgEl) {
+            absChgEl.textContent = `${isPos ? "+" : ""}${formatINR(q.change)}`;
+            absChgEl.classList.toggle("text-green", isPos);
+            absChgEl.classList.toggle("text-red", !isPos);
+          }
         });
-
-        window.dispatchEvent(new CustomEvent("fintrack:market_tick", { detail: payload }));
       });
+
+      window.dispatchEvent(new CustomEvent("fintrack:market_tick", { detail: payload }));
     }
+
+    if (typeof io !== "undefined" && document.getElementById("globalMarketStatusPill")) {
+      socket = io();
+      window.FinTrack.socket = socket;
+      socket.on("market_tick", (payload) => renderMarketTick(payload, true));
+    }
+
+    async function pollQuotes() {
+      if (quotePollInFlight) return;
+      if (socket && socket.connected && lastSocketTickAt && Date.now() - lastSocketTickAt <= 3000) return;
+
+      const symbols = new Set([
+        ...Array.from(document.querySelectorAll("[data-live-symbol]"), (row) => row.dataset.liveSymbol),
+        ...(window.FinTrack.pollSymbols || []),
+      ]);
+      if (!symbols.size) return;
+
+      quotePollInFlight = true;
+      try {
+        const results = await Promise.all(Array.from(symbols, async (symbol) => {
+          const response = await fetch(`/api/market/quote/${encodeURIComponent(symbol)}`, { cache: "no-store" });
+          if (!response.ok) return null;
+          const data = await response.json();
+          return { symbol, quote: data.quote, status: data.status };
+        }));
+        const quotes = {};
+        let status = null;
+        results.forEach((result) => {
+          if (!result || !result.quote) return;
+          quotes[result.symbol] = result.quote;
+          status = result.status || status;
+        });
+        if (Object.keys(quotes).length) {
+          renderMarketTick({ quotes, status, source: "http-poll" }, false);
+        }
+      } catch (err) {
+        console.warn("Market quote polling failed:", err);
+      } finally {
+        quotePollInFlight = false;
+      }
+    }
+
+    pollQuotes();
+    window.setInterval(pollQuotes, 2000);
   });
 
   function updateStatusPill(status) {
