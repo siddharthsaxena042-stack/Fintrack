@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Paper Portfolio{% endblock %}
+{% block page_heading %}Paper Trading Portfolio & Trade History{% endblock %}
+
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <span class="kpi-label">Virtual Cash</span>
+    <span class="kpi-value">{{ portfolio.virtual_balance|inr }}</span>
+    <span class="kpi-meta">Uninvested capital</span>
+  </div>
+  <div class="kpi-card">
+    <span class="kpi-label">Invested Equity</span>
+    <span class="kpi-value">{{ portfolio.total_invested|inr }}</span>
+    <span class="kpi-meta">Cost basis across holdings</span>
+  </div>
+  <div class="kpi-card">
+    <span class="kpi-label">Current Holdings Value</span>
+    <span class="kpi-value" id="portHoldingsVal">{{ portfolio.total_holdings_value|inr }}</span>
+    <span class="kpi-meta">Total Portfolio: <strong id="portTotalVal">{{ portfolio.total_portfolio_value|inr }}</strong></span>
+  </div>
+  <div class="kpi-card">
+    <span class="kpi-label">Unrealized P&L</span>
+    <span class="kpi-value {% if portfolio.total_unrealized_pnl >= 0 %}text-green{% else %}text-red{% endif %}" id="portUnrealized">
+      {{ portfolio.total_unrealized_pnl|inr }}
+    </span>
+    <span class="kpi-meta">Live mark-to-market</span>
+  </div>
+  <div class="kpi-card">
+    <span class="kpi-label">Realized P&L</span>
+    <span class="kpi-value {% if portfolio.total_realized_pnl >= 0 %}text-green{% else %}text-red{% endif %}">
+      {{ portfolio.total_realized_pnl|inr }}
+    </span>
+    <span class="kpi-meta">Closed SELL trades</span>
+  </div>
+</div>
+
+<!-- Live Holdings Table -->
+<div class="card" style="margin-bottom:22px;">
+  <div class="card-header">
+    <div>
+      <div class="card-title">Active Holdings (Live Mark-to-Market)</div>
+      <div class="card-subtitle">Current Value & Unrealized P&L update dynamically via WebSocket ticks</div>
+    </div>
+    <a href="{{ url_for('market.terminal') }}" class="btn btn-primary btn-sm">+ New Trade</a>
+  </div>
+
+  {% if portfolio.holdings %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Sector</th>
+            <th style="text-align:right;">Qty</th>
+            <th style="text-align:right;">Avg Buy</th>
+            <th style="text-align:right;">Live LTP</th>
+            <th style="text-align:right;">Current Value</th>
+            <th style="text-align:right;">Unrealized P&L</th>
+            <th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in portfolio.holdings %}
+            <tr data-holding-row="{{ h.symbol }}" data-qty="{{ h.quantity }}" data-avg="{{ h.avg_buy_price }}">
+              <td>
+                <div style="font-weight:700;">{{ h.symbol }}</div>
+                <div style="font-size:11.5px;color:var(--text-secondary);">{{ h.name }}</div>
+              </td>
+              <td><span class="badge badge-blue">{{ h.sector }}</span></td>
+              <td style="text-align:right;" class="mono">{{ h.quantity }}</td>
+              <td style="text-align:right;" class="mono">{{ h.avg_buy_price|inr }}</td>
+              <td style="text-align:right;" class="mono" data-h-field="ltp">{{ h.ltp|inr }}</td>
+              <td style="text-align:right;" class="mono" data-h-field="current_val">{{ h.current_value|inr }}</td>
+              <td style="text-align:right;">
+                <span class="mono {% if h.unrealized_pnl >= 0 %}text-green{% else %}text-red{% endif %}" data-h-field="pnl" style="font-weight:700;">
+                  {{ h.unrealized_pnl|inr }} ({{ "%+.2f"|format(h.unrealized_pct) }}%)
+                </span>
+              </td>
+              <td style="text-align:right;">
+                <a href="{{ url_for('market.terminal', symbol=h.symbol) }}" class="btn btn-ghost btn-sm">Buy / Sell</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-muted">You do not have any open holdings yet. Head to <a href="{{ url_for('market.terminal') }}" style="color:var(--accent-secondary);">Live Market</a> to start paper trading.</p>
+  {% endif %}
+</div>
+
+<!-- Paper Trade History -->
+<div class="card">
+  <div class="card-header">
+    <div>
+      <div class="card-title">Paper Trade Execution History</div>
+      <div class="card-subtitle">Immutable audit log of every BUY & SELL transaction</div>
+    </div>
+  </div>
+
+  {% if trades %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th style="text-align:right;">Quantity</th>
+            <th style="text-align:right;">Execution Price</th>
+            <th style="text-align:right;">Order Value</th>
+            <th style="text-align:right;">Realized P&L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in trades %}
+            <tr>
+              <td class="mono" style="font-size:12px;color:var(--text-secondary);">{{ t.timestamp }}</td>
+              <td style="font-weight:700;">{{ t.symbol }}</td>
+              <td>
+                <span class="badge {% if t.side == 'BUY' %}badge-green{% else %}badge-red{% endif %}">{{ t.side }}</span>
+              </td>
+              <td style="text-align:right;" class="mono">{{ t.quantity }}</td>
+              <td style="text-align:right;" class="mono">{{ t.execution_price|inr }}</td>
+              <td style="text-align:right;" class="mono">{{ (t.quantity * t.execution_price)|inr }}</td>
+              <td style="text-align:right;" class="mono {% if t.side == 'SELL' %}{% if t.realized_pnl >= 0 %}text-green{% else %}text-red{% endif %}{% endif %}">
+                {% if t.side == 'SELL' %}{{ t.realized_pnl|inr }}{% else %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-muted">No trades executed yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const cash = {{ portfolio.virtual_balance }};
+    window.addEventListener("fintrack:market_tick", function (e) {
+      const quotes = (e.detail && e.detail.quotes) || {};
+      let totalHoldingsVal = 0;
+      let totalInvested = 0;
+
+      document.querySelectorAll("[data-holding-row]").forEach((row) => {
+        const sym = row.dataset.holdingRow;
+        const qty = Number(row.dataset.qty || 0);
+        const avg = Number(row.dataset.avg || 0);
+        const q = quotes[sym];
+        if (!q) return;
+
+        const ltp = Number(q.ltp);
+        const invested = avg * qty;
+        const currVal = ltp * qty;
+        const pnl = (ltp - avg) * qty;
+        const pct = invested > 0 ? (pnl / invested) * 100 : 0;
+
+        totalHoldingsVal += currVal;
+        totalInvested += invested;
+
+        const ltpEl = row.querySelector('[data-h-field="ltp"]');
+        const valEl = row.querySelector('[data-h-field="current_val"]');
+        const pnlEl = row.querySelector('[data-h-field="pnl"]');
+
+        if (ltpEl) ltpEl.textContent = window.FinTrack.formatINR(ltp);
+        if (valEl) valEl.textContent = window.FinTrack.formatINR(currVal);
+        if (pnlEl) {
+          pnlEl.textContent = `${window.FinTrack.formatINR(pnl)} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`;
+          pnlEl.classList.toggle("text-green", pnl >= 0);
+          pnlEl.classList.toggle("text-red", pnl < 0);
+        }
+      });
+
+      if (document.querySelectorAll("[data-holding-row]").length > 0) {
+        const totalUnrealized = totalHoldingsVal - totalInvested;
+        const hValEl = document.getElementById("portHoldingsVal");
+        const tValEl = document.getElementById("portTotalVal");
+        const unEl = document.getElementById("portUnrealized");
+        if (hValEl) hValEl.textContent = window.FinTrack.formatINR(totalHoldingsVal);
+        if (tValEl) tValEl.textContent = window.FinTrack.formatINR(cash + totalHoldingsVal);
+        if (unEl) {
+          unEl.textContent = window.FinTrack.formatINR(totalUnrealized);
+          unEl.classList.toggle("text-green", totalUnrealized >= 0);
+          unEl.classList.toggle("text-red", totalUnrealized < 0);
+        }
+      }
+    });
+  })();
+</script>
+{% endblock %}

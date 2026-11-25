@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Watchlist{% endblock %}
+{% block page_heading %}NSE Watchlist{% endblock %}
+
+{% block content %}
+<div class="grid-asymmetric">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Your Tracked Symbols</div>
+        <div class="card-subtitle">Live price ticks via Socket.IO</div>
+      </div>
+      <a href="{{ url_for('market.terminal') }}" class="btn btn-primary btn-sm">Open Terminal</a>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Instrument Key</th>
+            <th style="text-align:right;">LTP</th>
+            <th style="text-align:right;">Change %</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="watchlistTableBody">
+          {% for item in watchlist_items %}
+            <tr data-live-symbol="{{ item.symbol }}">
+              <td>
+                <div style="font-weight:700;">{{ item.symbol }}</div>
+                <div style="font-size:11.5px;color:var(--text-secondary);">{{ item.name }}</div>
+              </td>
+              <td class="mono" style="font-size:11.5px;color:var(--text-muted);">{{ item.instrument_key }}</td>
+              <td style="text-align:right;" class="mono" data-field="ltp">{{ item.ltp|inr }}</td>
+              <td style="text-align:right;">
+                <span class="badge mono {% if item.change_pct >= 0 %}badge-green text-green{% else %}badge-red text-red{% endif %}" data-field="change_pct">
+                  {{ "%+.2f"|format(item.change_pct) }}%
+                </span>
+              </td>
+              <td style="text-align:right;white-space:nowrap;">
+                <a href="{{ url_for('market.terminal', symbol=item.symbol) }}" class="btn btn-ghost btn-sm">Trade</a>
+                <button type="button" class="btn btn-danger btn-sm" data-remove-watch="{{ item.symbol }}">Remove</button>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="text-muted">No symbols in watchlist yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Add NSE Instruments</div>
+        <div class="card-subtitle">Click to add to your personal watchlist</div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;max-height:520px;overflow-y:auto;">
+      {% for inst in all_instruments %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 11px;border:1px solid var(--border-color);border-radius:var(--radius-sm);">
+          <div>
+            <div style="font-weight:700;font-size:13px;">{{ inst.symbol }}</div>
+            <div style="font-size:11px;color:var(--text-secondary);">{{ inst.name }} • {{ inst.sector }}</div>
+          </div>
+          {% if inst.symbol in watched_symbols %}
+            <span class="badge badge-green">Added</span>
+          {% else %}
+            <button type="button" class="btn btn-primary btn-sm" data-add-watch="{{ inst.symbol }}">+ Add</button>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("[data-add-watch]").forEach((btn) => {
+      btn.addEventListener("click", async function () {
+        const res = await fetch("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: btn.dataset.addWatch }),
+        });
+        if (res.ok) window.location.reload();
+      });
+    });
+
+    document.querySelectorAll("[data-remove-watch]").forEach((btn) => {
+      btn.addEventListener("click", async function () {
+        const sym = btn.dataset.removeWatch;
+        const res = await fetch(`/api/watchlist/${encodeURIComponent(sym)}`, {
+          method: "DELETE",
+        });
+        if (res.ok) window.location.reload();
+      });
+    });
+  });
+</script>
+{% endblock %}

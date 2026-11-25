@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}FinTrack{% endblock %} — Personal Finance & Paper Trading</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Fixed Collapsible Left Sidebar -->
+    <aside class="sidebar" id="appSidebar">
+      <div class="sidebar-brand">
+        <a href="{{ url_for('main.dashboard') }}" class="brand-logo">
+          <span class="brand-icon">FT</span>
+          <span class="brand-text">FinTrack</span>
+        </a>
+        <button type="button" class="icon-btn" id="sidebarCollapseBtn" title="Toggle sidebar">
+          <span>⇄</span>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="{{ url_for('main.dashboard') }}" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <a href="{{ url_for('market.terminal') }}" class="nav-item {% if active_page == 'market' %}active{% endif %}">
+          <span class="nav-icon">📈</span>
+          <span class="nav-label">Live Market</span>
+        </a>
+        <a href="{{ url_for('trading.portfolio_page') }}" class="nav-item {% if active_page == 'portfolio' %}active{% endif %}">
+          <span class="nav-icon">💼</span>
+          <span class="nav-label">Paper Portfolio</span>
+        </a>
+        <a href="{{ url_for('market.watchlist_page') }}" class="nav-item {% if active_page == 'watchlist' %}active{% endif %}">
+          <span class="nav-icon">⭐</span>
+          <span class="nav-label">Watchlist</span>
+        </a>
+        <a href="{{ url_for('finance.expenses_page') }}" class="nav-item {% if active_page == 'expenses' %}active{% endif %}">
+          <span class="nav-icon">💳</span>
+          <span class="nav-label">Expenses</span>
+        </a>
+        <a href="{{ url_for('finance.goals_page') }}" class="nav-item {% if active_page == 'goals' %}active{% endif %}">
+          <span class="nav-icon">🎯</span>
+          <span class="nav-label">Goals</span>
+        </a>
+        <a href="{{ url_for('finance.reports_page') }}" class="nav-item {% if active_page == 'reports' %}active{% endif %}">
+          <span class="nav-icon">🛡️</span>
+          <span class="nav-label">Reports</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-pill">
+          <div class="user-avatar">{{ (current_user_name or 'U')[0]|upper }}</div>
+          <div class="sidebar-user-meta">
+            <div class="sidebar-user-name">{{ current_user_name or 'Investor' }}</div>
+            <div class="sidebar-user-email">{{ current_user_email or '' }}</div>
+          </div>
+        </div>
+        <a href="{{ url_for('auth.logout') }}" class="icon-btn" title="Logout">
+          <span>⏻</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Column -->
+    <div class="main-wrapper">
+      <!-- Fixed Global Top Header -->
+      <header class="top-header">
+        <div class="header-left">
+          <button type="button" class="icon-btn mobile-menu-btn" id="mobileMenuBtn" title="Menu">☰</button>
+          <h1 class="page-title">{% block page_heading %}Dashboard{% endblock %}</h1>
+        </div>
+
+        <div class="header-right">
+          {% set ms = market_status or {'badge': 'OFFLINE/FALLBACK', 'source': 'Fallback Engine', 'detail': '', 'timestamp': ''} %}
+          <div class="market-status-pill" id="globalMarketStatusPill" data-badge="{{ ms.badge }}" title="{{ ms.source }} — {{ ms.detail }}">
+            <span class="status-dot"></span>
+            <span id="globalStatusBadgeText">{{ ms.badge }}</span>
+            <span class="status-meta-time" id="globalStatusTime">{{ ms.source }} • {{ ms.timestamp }}</span>
+          </div>
+
+          <button type="button" class="btn btn-ghost btn-sm" id="aiHelperOpenBtn" title="Open AI Finance Helper">
+            ✨ AI Helper
+          </button>
+
+          <div class="dropdown-wrap">
+            <button type="button" class="icon-btn" id="notifBellBtn" title="Notifications">
+              <span>🔔</span>
+              <span class="notif-count" id="notifUnreadBadge" style="display:none;">0</span>
+            </button>
+            <div class="notif-dropdown" id="notifDropdown">
+              <div style="padding:12px 14px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
+                <strong>Notifications</strong>
+                <button type="button" class="btn btn-ghost btn-sm" id="markAllReadBtn">Mark all read</button>
+              </div>
+              <div id="notifList"></div>
+            </div>
+          </div>
+
+          <button type="button" class="icon-btn" id="themeToggleBtn" title="Toggle Dark/Light Theme">
+            <span id="themeToggleIcon">☀️</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack">
+              {% for category, msg in messages %}
+                <div class="alert alert-{{ category }}">{{ msg }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <!-- AI Finance Helper Slide-over Drawer -->
+  <aside class="ai-drawer" id="aiDrawer">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-weight:700;font-size:15px;">✨ FinTrack AI Finance Helper</div>
+        <div style="font-size:11.5px;color:var(--text-secondary);">Live insights from your portfolio, expenses & goals</div>
+      </div>
+      <button type="button" class="icon-btn" id="aiHelperCloseBtn">✕</button>
+    </div>
+
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border-color);display:flex;flex-wrap:wrap;gap:6px;">
+      <button type="button" class="pill-btn" data-ai-chip="Analyze my portfolio risk and diversification">Portfolio Risk</button>
+      <button type="button" class="pill-btn" data-ai-chip="Summarize my monthly expenses and savings goals">Expenses & Goals</button>
+      <button type="button" class="pill-btn" data-ai-chip="Give me my paper trading P&L summary">Trading P&L</button>
+    </div>
+
+    <div class="ai-messages" id="aiMessages">
+      <div class="ai-bubble bot">Hello {{ current_user_name or 'Investor' }}! Ask me about your portfolio diversification, monthly expenses, savings goals, or paper trading P&L.</div>
+    </div>
+
+    <form id="aiChatForm" style="padding:14px;border-top:1px solid var(--border-color);display:flex;gap:8px;">
+      <input type="text" id="aiPromptInput" class="form-control" placeholder="Ask about your finances..." required />
+      <button type="submit" class="btn btn-primary">Send</button>
+    </form>
+  </aside>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

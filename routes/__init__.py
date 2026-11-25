@@ -1,0 +1,1 @@
+"""FinTrack modular Flask Blueprints."""

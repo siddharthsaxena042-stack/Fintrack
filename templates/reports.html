@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Risk & Reports{% endblock %}
+{% block page_heading %}Portfolio Risk Analysis & Financial Reports{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:20px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px;">
+  <div>
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-secondary);">Diversification & Financial Health Score</div>
+    <div style="display:flex;align-items:baseline;gap:12px;margin-top:4px;">
+      <span class="mono" style="font-size:32px;font-weight:800;">{{ report.diversification_score }}/100</span>
+      <span class="badge {% if report.diversification_score >= 80 %}badge-green{% elif report.diversification_score >= 55 %}badge-amber{% else %}badge-red{% endif %}">
+        {{ report.risk_grade }}
+      </span>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <a href="{{ url_for('finance.download_report', format='csv') }}" class="btn btn-primary">⬇ Download CSV Report</a>
+    <a href="{{ url_for('finance.download_report', format='txt') }}" class="btn btn-ghost">⬇ Download Text Summary</a>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <span class="kpi-label">Cash vs Equity Split</span>
+    <span class="kpi-value" style="font-size:18px;">{{ report.cash_pct }}% / {{ report.equity_pct }}%</span>
+    <span class="kpi-meta">Cash: {{ report.portfolio.virtual_balance|inr }} • Equity: {{ report.portfolio.total_holdings_value|inr }}</span>
+  </div>
+
+  <div class="kpi-card">
+    <span class="kpi-label">Top Single-Stock Weight</span>
+    <span class="kpi-value" style="font-size:18px;">
+      {% if report.max_stock_symbol %}{{ report.max_stock_symbol }} ({{ report.max_stock_weight }}%){% else %}None{% endif %}
+    </span>
+    <span class="kpi-meta">Recommended cap: &le; 35% per stock</span>
+  </div>
+
+  <div class="kpi-card">
+    <span class="kpi-label">Expense-to-Savings Ratio</span>
+    <span class="kpi-value" style="font-size:18px;">{{ report.expense_ratio }}% : {{ report.savings_ratio }}%</span>
+    <span class="kpi-meta">Expenses {{ report.total_expenses|inr }} vs Saved {{ report.total_saved|inr }}</span>
+  </div>
+</div>
+
+<div class="grid-2" style="margin-bottom:22px;">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Sector Allocation</div>
+        <div class="card-subtitle">Equity exposure by NSE industry sector</div>
+      </div>
+    </div>
+    {% if report.sector_breakdown %}
+      <div style="height:250px;">
+        <canvas id="sectorChart"></canvas>
+      </div>
+    {% else %}
+      <p class="text-muted">No active equity holdings to analyze by sector yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Rule-Based Risk Findings</div>
+        <div class="card-subtitle">Automated checks across diversification, cash buffer & savings</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      {% for f in report.findings %}
+        <div class="alert alert-{{ f.level }}">
+          <div style="font-weight:700;margin-bottom:2px;">{{ f.title }}</div>
+          <div style="font-size:12.5px;opacity:0.95;">{{ f.detail }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const sectors = {{ report.sector_breakdown|tojson }};
+    const canvas = document.getElementById("sectorChart");
+    if (!canvas || !sectors.length || typeof Chart === "undefined") return;
+
+    const chart = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: sectors.map((s) => s.sector),
+        datasets: [{
+          label: "Allocation (%)",
+          data: sectors.map((s) => s.weight_pct),
+          backgroundColor: "#3b82f6",
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 100,
+            ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--text-secondary").trim() || "#94a3b8" }
+          },
+          x: {
+            ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--text-secondary").trim() || "#94a3b8" }
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+
+    window.addEventListener("fintrack:theme", function () {
+      const c = getComputedStyle(document.documentElement).getPropertyValue("--text-secondary").trim() || "#94a3b8";
+      chart.options.scales.y.ticks.color = c;
+      chart.options.scales.x.ticks.color = c;
+      chart.update();
+    });
+  })();
+</script>
+{% endblock %}

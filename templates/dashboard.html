@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_heading %}Unified Dashboard{% endblock %}
+
+{% block content %}
+<!-- Top Summary KPIs -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <span class="kpi-label">Virtual Cash Balance</span>
+    <span class="kpi-value">{{ portfolio.virtual_balance|inr }}</span>
+    <span class="kpi-meta">Available for paper trading</span>
+  </div>
+
+  <div class="kpi-card">
+    <span class="kpi-label">Total Portfolio Value</span>
+    <span class="kpi-value" id="dashTotalPortVal">{{ portfolio.total_portfolio_value|inr }}</span>
+    <span class="kpi-meta">Cash + Live Equity ({{ portfolio.holdings|length }} holdings)</span>
+  </div>
+
+  <div class="kpi-card">
+    <span class="kpi-label">Unrealized & Realized P&L</span>
+    {% set total_pnl = portfolio.total_unrealized_pnl + portfolio.total_realized_pnl %}
+    <span class="kpi-value {% if total_pnl >= 0 %}text-green{% else %}text-red{% endif %}" id="dashTotalPnl">
+      {{ total_pnl|inr }}
+    </span>
+    <span class="kpi-meta">
+      Unrealized: <span id="dashUnrealized">{{ portfolio.total_unrealized_pnl|inr }}</span> • Realized: {{ portfolio.total_realized_pnl|inr }}
+    </span>
+  </div>
+
+  <div class="kpi-card">
+    <span class="kpi-label">Monthly Expenses</span>
+    <span class="kpi-value text-amber">{{ monthly_expenses|inr }}</span>
+    <span class="kpi-meta"><a href="{{ url_for('finance.expenses_page') }}" style="color:var(--accent-secondary);">Manage expenses →</a></span>
+  </div>
+
+  <div class="kpi-card">
+    <span class="kpi-label">Savings Goal Progress</span>
+    <span class="kpi-value text-green">{{ goals_summary.overall_progress_pct }}%</span>
+    <div class="progress-track" style="margin-top:2px;">
+      <div class="progress-fill" style="width: {{ goals_summary.overall_progress_pct }}%;"></div>
+    </div>
+    <span class="kpi-meta">{{ goals_summary.total_saved|inr }} of {{ goals_summary.total_target|inr }}</span>
+  </div>
+</div>
+
+<!-- Watchlist & Recent Activity -->
+<div class="grid-asymmetric">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Quick-View Watchlist</div>
+        <div class="card-subtitle">Real-time NSE streaming prices with live % change</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <a href="{{ url_for('market.watchlist_page') }}" class="btn btn-ghost btn-sm">Edit</a>
+        <a href="{{ url_for('market.terminal') }}" class="btn btn-primary btn-sm">Open Terminal</a>
+      </div>
+    </div>
+
+    {% if watchlist_items %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Sector</th>
+              <th style="text-align:right;">LTP</th>
+              <th style="text-align:right;">Change</th>
+              <th style="text-align:right;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in watchlist_items %}
+              <tr data-live-symbol="{{ item.symbol }}">
+                <td>
+                  <div style="font-weight:700;">{{ item.symbol }}</div>
+                  <div style="font-size:11.5px;color:var(--text-secondary);">{{ item.name }}</div>
+                </td>
+                <td><span class="badge badge-blue">{{ item.sector }}</span></td>
+                <td style="text-align:right;" class="mono" data-field="ltp">{{ item.ltp|inr }}</td>
+                <td style="text-align:right;">
+                  <span class="badge mono {% if item.change_pct >= 0 %}badge-green text-green{% else %}badge-red text-red{% endif %}" data-field="change_pct">
+                    {{ "%+.2f"|format(item.change_pct) }}%
+                  </span>
+                </td>
+                <td style="text-align:right;">
+                  <a href="{{ url_for('market.terminal', symbol=item.symbol) }}" class="btn btn-ghost btn-sm">Trade</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted">Your watchlist is empty. <a href="{{ url_for('market.watchlist_page') }}" style="color:var(--accent-secondary);">Add NSE stocks</a>.</p>
+    {% endif %}
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Recent Paper Trades</div>
+          <div class="card-subtitle">Latest atomic order executions</div>
+        </div>
+        <a href="{{ url_for('trading.portfolio_page') }}" class="btn btn-ghost btn-sm">View All</a>
+      </div>
+      {% if recent_trades %}
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Side</th>
+                <th style="text-align:right;">Qty</th>
+                <th style="text-align:right;">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in recent_trades %}
+                <tr>
+                  <td style="font-weight:700;">{{ t.symbol }}</td>
+                  <td>
+                    <span class="badge {% if t.side == 'BUY' %}badge-green{% else %}badge-red{% endif %}">{{ t.side }}</span>
+                  </td>
+                  <td style="text-align:right;" class="mono">{{ t.quantity }}</td>
+                  <td style="text-align:right;" class="mono">{{ t.execution_price|inr }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted">No paper trades executed yet. Visit <a href="{{ url_for('market.terminal') }}" style="color:var(--accent-secondary);">Live Market</a> to place your first order.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Top Expense Categories</div>
+          <div class="card-subtitle">All-time personal spending breakdown</div>
+        </div>
+        <a href="{{ url_for('finance.expenses_page') }}" class="btn btn-ghost btn-sm">+ Add</a>
+      </div>
+      {% if expense_categories %}
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          {% for c in expense_categories %}
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span>{{ c.category }}</span>
+              <span class="mono" style="font-weight:600;">{{ c.amount|inr }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted">No expenses logged yet. Track your spending in <a href="{{ url_for('finance.expenses_page') }}" style="color:var(--accent-secondary);">Expenses</a>.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Keep dashboard Portfolio Value & Unrealized P&L live on WebSocket ticks
+  (function () {
+    const holdings = {{ portfolio.holdings|tojson }};
+    const cash = {{ portfolio.virtual_balance }};
+    const realized = {{ portfolio.total_realized_pnl }};
+    if (!holdings || holdings.length === 0) return;
+
+    window.addEventListener("fintrack:market_tick", function (e) {
+      const quotes = (e.detail && e.detail.quotes) || {};
+      let holdingsVal = 0;
+      let invested = 0;
+      holdings.forEach((h) => {
+        const q = quotes[h.symbol];
+        const ltp = q ? Number(q.ltp) : Number(h.ltp);
+        holdingsVal += ltp * Number(h.quantity);
+        invested += Number(h.avg_buy_price) * Number(h.quantity);
+      });
+      const unrealized = holdingsVal - invested;
+      const totalPort = cash + holdingsVal;
+      const totalPnl = unrealized + realized;
+
+      const portEl = document.getElementById("dashTotalPortVal");
+      const pnlEl = document.getElementById("dashTotalPnl");
+      const unEl = document.getElementById("dashUnrealized");
+      if (portEl) portEl.textContent = window.FinTrack.formatINR(totalPort);
+      if (unEl) unEl.textContent = window.FinTrack.formatINR(unrealized);
+      if (pnlEl) {
+        pnlEl.textContent = window.FinTrack.formatINR(totalPnl);
+        pnlEl.classList.toggle("text-green", totalPnl >= 0);
+        pnlEl.classList.toggle("text-red", totalPnl < 0);
+      }
+    });
+  })();
+</script>
+{% endblock %}
