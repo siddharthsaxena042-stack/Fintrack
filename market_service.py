@@ -367,7 +367,7 @@ class MarketDataService:
             candles = self._fetch_yfinance_candles(sym, tf)
 
         if not candles:
-            candles = self._generate_synthetic_candles(sym, tf, count=90)
+            candles = self._generate_synthetic_candles(sym, tf, count=120)
 
         # Ensure strictly ascending unique timestamps and update quote LTP from latest candle
         candles = self._normalize_candles(candles)
